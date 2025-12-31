@@ -8,6 +8,7 @@ import CheckInForm from '@/components/CheckInForm';
 import BurnoutIndicator from '@/components/BurnoutIndicator';
 import Heatmap from '@/components/Heatmap';
 import TrendCharts from '@/components/TrendCharts';
+import SafeBoundary from '@/components/SafeBoundary';
 import WeeklyOverview from '@/components/WeeklyOverview';
 import Disclaimer from '@/components/Disclaimer';
 import GamifiedInsights from '@/components/GamifiedInsights';
@@ -114,25 +115,37 @@ const Dashboard = () => {
 
           {/* Row 2: Check-in Form + Burnout + AI Insights */}
           <div className="grid gap-4 md:grid-cols-2">
-            <CheckInForm onSubmit={handleNewCheckIn} />
+            <SafeBoundary>
+              <CheckInForm onSubmit={handleNewCheckIn} />
+            </SafeBoundary>
             <div className="space-y-4">
-              <BurnoutIndicator risk={burnoutRisk} />
-              <AIInsights checkIns={checkIns} />
+              <SafeBoundary>
+                <BurnoutIndicator risk={burnoutRisk} />
+              </SafeBoundary>
+              <SafeBoundary>
+                <AIInsights checkIns={checkIns} />
+              </SafeBoundary>
             </div>
           </div>
 
           {/* Row 3: Gamified Insights */}
-          <GamifiedInsights 
-            profile={profile} 
-            checkIns={checkIns} 
-            onUpdateProfile={handleUpdateProfile}
-          />
+          <SafeBoundary>
+            <GamifiedInsights 
+              profile={profile} 
+              checkIns={checkIns} 
+              onUpdateProfile={handleUpdateProfile}
+            />
+          </SafeBoundary>
 
           {/* Row 4: Charts */}
-          <TrendCharts data={checkIns} />
+          <SafeBoundary fallback={<div className="rounded-lg bg-card border border-border p-5 text-sm text-muted-foreground">Unable to render charts</div>}>
+            <TrendCharts data={checkIns} />
+          </SafeBoundary>
 
           {/* Row 5: Heatmap */}
-          <Heatmap data={heatmapData} />
+          <SafeBoundary fallback={<div className="rounded-lg bg-card border border-border p-5 text-sm text-muted-foreground">Unable to render heatmap</div>}>
+            <Heatmap data={heatmapData} />
+          </SafeBoundary>
         </motion.div>
       </main>
 

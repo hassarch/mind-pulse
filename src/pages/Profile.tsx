@@ -162,24 +162,24 @@ const Profile = () => {
               <h2 className="text-lg font-bold text-foreground">Avatar Progression</h2>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-5">
               {avatarTiers.map((avatar) => {
                 const unlocked = level >= avatar.level;
                 return (
                   <Tooltip key={avatar.level}>
                     <TooltipTrigger asChild>
                       <motion.div
-                        className={`p-4 rounded-2xl text-center transition-all cursor-pointer ${
+                        className={`p-5 md:p-6 rounded-2xl text-center transition-all cursor-pointer ${
                           unlocked 
                             ? `bg-gradient-to-br ${avatar.bg}` 
                             : 'bg-secondary/30 opacity-50'
                         }`}
                         whileHover={{ scale: unlocked ? 1.05 : 1 }}
                       >
-                        <span className={`text-3xl block mb-1 ${!unlocked && 'grayscale'}`}>
+                        <span className={`text-3xl md:text-4xl block mb-1.5 ${!unlocked && 'grayscale'}`}>
                           {avatar.emoji}
                         </span>
-                        <p className="text-xs font-medium text-foreground">{avatar.title}</p>
+                        <p className="text-xs md:text-sm font-medium text-foreground">{avatar.title}</p>
                         <p className="text-xs text-muted-foreground">Lv. {avatar.level}</p>
                       </motion.div>
                     </TooltipTrigger>

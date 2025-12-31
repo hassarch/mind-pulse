@@ -1,67 +1,73 @@
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Calendar } from 'lucide-react';
-import { format, subDays, startOfWeek, addDays } from 'date-fns';
+import { format } from 'date-fns';
 
 interface HeatmapProps {
+  // Expect a 53x7 grid (weeks x days) of ISO date strings and values
   data: { date: string; value: number }[][];
 }
 
+function brandBgFor(value: number): string {
+  // Map to CSS variables defined in index.css -> tailwind.config theme.extend.colors.heatmap
+  if (value <= 0) return 'hsl(var(--heatmap-empty))';
+  if (value < 25) return 'hsl(var(--heatmap-low))';
+  if (value < 50) return 'hsl(var(--heatmap-medium))';
+  if (value < 75) return 'hsl(var(--heatmap-high))';
+  return 'hsl(var(--heatmap-max))';
+}
+
 const Heatmap = ({ data }: HeatmapProps) => {
-  // Flatten data for easy lookup
-  const dataMap = new Map<string, number>();
-  data.forEach(week => {
-    week.forEach(day => {
-      if (day.date) {
-        dataMap.set(day.date, day.value);
-      }
-    });
-  });
+  // Normalize incoming data into Date objects and clamp to valid shape
+  const fullWeeks = useMemo(() => {
+    const safe = Array.isArray(data) ? data : [];
+    return safe.map((week) =>
+      (Array.isArray(week) ? week : []).map((d) => ({
+        date: new Date(d?.date ?? ''),
+        value: Number.isFinite(d?.value as number) ? (d!.value as number) : 0,
+      }))
+    );
+  }, [data]);
 
-  const hasData = dataMap.size > 0;
+  // Compact mode on small screens
+  const [weeksToShow, setWeeksToShow] = useState(53);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setWeeksToShow(mq.matches ? 28 : 53);
+    update();
+    // add/remove event listeners for compatibility
+    if (mq.addEventListener) mq.addEventListener('change', update);
+    // @ts-ignore legacy
+    else mq.addListener(update);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', update);
+      // @ts-ignore legacy
+      else mq.removeListener(update);
+    };
+  }, []);
 
-  // Generate GitHub-style grid: 52 weeks x 7 days
-  const today = new Date();
-  const weeks: { date: Date; value: number }[][] = [];
-  
-  // Start from 52 weeks ago, aligned to Sunday
-  const startDate = startOfWeek(subDays(today, 364), { weekStartsOn: 0 });
-  
-  for (let w = 0; w < 53; w++) {
-    const week: { date: Date; value: number }[] = [];
-    for (let d = 0; d < 7; d++) {
-      const date = addDays(startDate, w * 7 + d);
-      const dateStr = format(date, 'yyyy-MM-dd');
-      const value = dataMap.get(dateStr) || 0;
-      week.push({ date, value });
-    }
-    weeks.push(week);
-  }
+  const weeks = useMemo(() => fullWeeks.slice(-weeksToShow), [fullWeeks, weeksToShow]);
+  const todayISO = new Date().toISOString().split('T')[0];
 
-  const getColor = (value: number) => {
-    if (value === 0) return 'bg-heatmap-empty';
-    if (value < 40) return 'bg-heatmap-low';
-    if (value < 60) return 'bg-heatmap-medium';
-    if (value < 80) return 'bg-heatmap-high';
-    return 'bg-heatmap-max';
-  };
-
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
-  // Get month labels for the header
+  // Month labels based on first day of each visible week
   const monthLabels: { label: string; colStart: number }[] = [];
   let lastMonth = -1;
   weeks.forEach((week, weekIndex) => {
-    const firstDayOfWeek = week[0].date;
-    const month = firstDayOfWeek.getMonth();
+    const firstDay = week[0]?.date;
+    if (!firstDay || isNaN(firstDay.getTime())) return;
+    const month = firstDay.getMonth();
     if (month !== lastMonth) {
-      monthLabels.push({
-        label: format(firstDayOfWeek, 'MMM'),
-        colStart: weekIndex,
-      });
+      monthLabels.push({ label: format(firstDay, 'MMM'), colStart: weekIndex });
       lastMonth = month;
     }
   });
+
+  // Show Mon, Wed, Fri only to reduce clutter
+  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+
+  // Detect empty data (all zeros)
+  const isAllEmpty = weeks.flat().every((d) => !d || !Number.isFinite(d.value) || d.value <= 0);
 
   return (
     <div className="rounded-3xl bg-card border border-border p-6">
@@ -71,15 +77,16 @@ const Heatmap = ({ data }: HeatmapProps) => {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[750px]">
+        <div className="min-w-[860px]">
           {/* Month labels */}
-          <div className="flex mb-2 ml-10">
+          <div className="flex mb-2 ml-10 select-none">
             {monthLabels.map((m, i) => (
               <span
-                key={i}
+                key={`${m.label}-${i}`}
                 className="text-xs text-muted-foreground"
-                style={{ 
-                  marginLeft: i === 0 ? m.colStart * 14 : (m.colStart - (monthLabels[i-1]?.colStart || 0)) * 14 - 24
+                style={{
+                  marginLeft:
+                    i === 0 ? m.colStart * 16 : (m.colStart - monthLabels[i - 1]!.colStart) * 16 - 24,
                 }}
               >
                 {m.label}
@@ -89,10 +96,10 @@ const Heatmap = ({ data }: HeatmapProps) => {
 
           <div className="flex">
             {/* Day labels */}
-            <div className="flex flex-col gap-[3px] mr-2 pt-[2px]">
+            <div className="flex flex-col gap-[3px] mr-2 pt-[2px] select-none">
               {dayLabels.map((day, i) => (
                 <span
-                  key={day}
+                  key={`dl-${i}`}
                   className={`text-xs text-muted-foreground h-[12px] leading-[12px] ${
                     i % 2 === 0 ? 'opacity-0' : ''
                   }`}
@@ -105,27 +112,28 @@ const Heatmap = ({ data }: HeatmapProps) => {
             {/* Grid */}
             <div className="flex gap-[3px]">
               {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-[3px]">
+                <div key={`w-${wi}`} className="flex flex-col gap-[3px]">
                   {week.map((day, di) => {
-                    const isToday = format(day.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
-                    const isFuture = day.date > today;
-                    
+                    const iso = isNaN(day.date.getTime())
+                      ? ''
+                      : day.date.toISOString().split('T')[0];
+                    const isToday = iso === todayISO;
+                    const isFuture = !iso || day.date.getTime() > Date.now();
+                    const bg = isFuture ? 'transparent' : brandBgFor(day.value);
+
                     return (
-                      <Tooltip key={di}>
+                      <Tooltip key={`d-${wi}-${di}`}>
                         <TooltipTrigger asChild>
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             transition={{ delay: wi * 0.008 + di * 0.005 }}
-                            className={`h-[12px] w-[12px] rounded-sm cursor-pointer transition-all ${
-                              isFuture 
-                                ? 'bg-transparent' 
-                                : getColor(day.value)
-                            } ${
-                              isToday ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''
-                            } ${
-                              !isFuture ? 'hover:ring-1 hover:ring-primary/50' : ''
-                            }`}
+                            className="h-[13px] w-[13px] rounded-[3px] cursor-pointer"
+                            style={{
+                              backgroundColor: bg,
+                              outline: isToday ? '2px solid hsl(var(--primary))' : undefined,
+                              outlineOffset: isToday ? 1 : undefined,
+                            }}
                           />
                         </TooltipTrigger>
                         {!isFuture && (
@@ -147,15 +155,19 @@ const Heatmap = ({ data }: HeatmapProps) => {
           </div>
 
           {/* Legend */}
-          <div className="mt-4 flex items-center justify-end gap-2">
+          <div className="mt-4 flex items-center justify-end gap-2 select-none">
             <span className="text-xs text-muted-foreground">Less</span>
             <div className="flex gap-1">
-              {['bg-heatmap-empty', 'bg-heatmap-low', 'bg-heatmap-medium', 'bg-heatmap-high', 'bg-heatmap-max'].map((c, i) => (
-                <div key={i} className={`h-[12px] w-[12px] rounded-sm ${c}`} />
+              {['var(--heatmap-empty)','var(--heatmap-low)','var(--heatmap-medium)','var(--heatmap-high)','var(--heatmap-max)'].map((cssVar, i) => (
+                <div key={`lg-${i}`} className="h-[12px] w-[12px] rounded-[3px]" style={{ backgroundColor: `hsl(${cssVar})` }} />
               ))}
             </div>
             <span className="text-xs text-muted-foreground">More</span>
           </div>
+
+          {isAllEmpty && (
+            <p className="mt-3 text-xs text-muted-foreground">No activity yet. Start logging check-ins to see your activity.</p>
+          )}
         </div>
       </div>
     </div>

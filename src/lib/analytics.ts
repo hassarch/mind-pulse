@@ -1,4 +1,5 @@
 import { DailyCheckIn, BurnoutRisk, WeeklyStats } from './types';
+import { startOfWeek, subDays } from 'date-fns';
 
 export const calculateBurnoutRisk = (data: DailyCheckIn[]): BurnoutRisk => {
   if (data.length < 3) {
@@ -89,32 +90,35 @@ export const calculateWeeklyStats = (data: DailyCheckIn[]): WeeklyStats => {
 };
 
 export const getHeatmapData = (data: DailyCheckIn[]) => {
-  const weeks: { date: string; value: number }[][] = [];
-  let currentWeek: { date: string; value: number }[] = [];
-  
-  // Get last 12 weeks
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 84);
-  
-  const filteredData = data.filter(d => new Date(d.date) >= cutoff);
-  
-  filteredData.forEach((entry, index) => {
-    const dayOfWeek = new Date(entry.date).getDay();
-    
-    if (dayOfWeek === 0 && currentWeek.length > 0) {
-      weeks.push(currentWeek);
-      currentWeek = [];
-    }
-    
-    currentWeek.push({
-      date: entry.date,
-      value: entry.productivityScore,
-    });
-  });
-  
-  if (currentWeek.length > 0) {
-    weeks.push(currentWeek);
+  // Build a map of date -> value (use productivityScore; if multiple entries per day, average them)
+  const byDate = new Map<string, { sum: number; count: number }>();
+  for (const d of data) {
+    const key = new Date(d.date).toISOString().split('T')[0];
+    const prev = byDate.get(key) || { sum: 0, count: 0 };
+    byDate.set(key, { sum: prev.sum + (d.productivityScore ?? 0), count: prev.count + 1 });
   }
-  
+
+  const valueFor = (isoDate: string) => {
+    const agg = byDate.get(isoDate);
+    if (!agg) return 0;
+    return Math.round(agg.sum / Math.max(1, agg.count));
+  };
+
+  // Generate last ~53 weeks aligned to Sunday, GitHub-style
+  const today = new Date();
+  const start = startOfWeek(subDays(today, 364), { weekStartsOn: 0 }); // 52 weeks back
+
+  const weeks: { date: string; value: number }[][] = [];
+  for (let w = 0; w < 53; w++) {
+    const week: { date: string; value: number }[] = [];
+    for (let dIdx = 0; dIdx < 7; dIdx++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + w * 7 + dIdx);
+      const iso = date.toISOString().split('T')[0];
+      week.push({ date: iso, value: valueFor(iso) });
+    }
+    weeks.push(week);
+  }
+
   return weeks;
 };
